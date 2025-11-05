@@ -1,0 +1,54 @@
+# Install necessary packages
+# !pip install faiss-cpu elasticsearch transformers sentence-transformers
+
+import faiss
+from elasticsearch import Elasticsearch
+from transformers import AutoTokenizer, AutoModel
+import numpy as np
+
+# Initialize Elasticsearch client for BM25
+es = Elasticsearch()
+
+# Load dense embedding model (e.g., Sentence Transformers)
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+model = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+
+def dense_embed(text):
+    inputs = tokenizer(text, return_tensors="pt")
+    outputs = model(**inputs)
+    embeddings = outputs.last_hidden_state.mean(dim=1).detach().numpy()
+    return embeddings.flatten()
+
+def query_expansion(query):
+    # Implement query expansion logic or return query unchanged
+    return query
+
+def count_keywords(query):
+    # Simple count of keywords (non-stopwords) in query
+    words = query.split()
+    return len(words)  # Simplified for example
+
+def modified_hybrid_rag_search(query, dense_index, sparse_index, threshold=0.5):
+    expanded_query = query_expansion(query)
+
+    dense_vec = dense_embed(expanded_query)
+    sparse_vec = None  # Build sparse vector using term frequency or elasticsearch query
+    
+    # Retrieve dense results via FAISS
+    _, dense_results = dense_index.search(np.array([dense_vec]), 100)
+
+    # Retrieve sparse results via elasticsearch BM25 query
+    sparse_results = es.search(index="your_index", body={"query": {"match": {"content": expanded_query}}}) 
+
+    # Dynamic sparse boost
+    keyword_density = count_keywords(query) / len(query.split())
+    sparse_boost = 1.5 if keyword_density > threshold else 1.2
+    
+    # Compute fused scores and rerank
+    # (This part involves combining FAISS and elasticsearch results by ranks and scores)
+
+    # Neural reranking - optional (use another transformer reranker)
+
+    # Return final ranked documents
+    return dense_results, sparse_results
+
